@@ -1,8 +1,7 @@
 # simulation.py
 from typing import List, Dict, Tuple, Any
 from agents import News
-import csv
-import os
+import csv, os
 
 def simulate_multi_news(
     model,
