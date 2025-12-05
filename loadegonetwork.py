@@ -5,7 +5,7 @@ from agents import Model, Susceptible, Skeptic, BOT, NewsReel
 import matplotlib.pyplot as plt
 
 def load_ego_graph(path, ego_id):
-    # load ego edgelist and attach ego to its neighbors
+    # Load ego graph from SNAP format and reconnect ego node
     edges_file = f"{path}/{ego_id}.edges"
     G = nx.read_edgelist(edges_file)
     ego_str = str(ego_id)
@@ -16,7 +16,7 @@ def load_ego_graph(path, ego_id):
     return G
 
 def build_model_from_graph(G, frac_susceptible=0.5, frac_skeptic=0.5, seed_types=None):
-    # instantiate model with human agents from graph nodes
+    # Create a model using graph nodes and assign human agent types
     model = Model(G)
     for n in G.nodes():
         node_id = str(n)
@@ -29,10 +29,14 @@ def build_model_from_graph(G, frac_susceptible=0.5, frac_skeptic=0.5, seed_types
     return model
 
 def add_random_bots(G, model, n_bots=10, edges_per_bot=3, bot_prefix="bot"):
-    # add n_bots new nodes connected randomly to existing nodes and register them as BOTs
-    existing_nodes = [n for n in G.nodes() if not str(n).startswith(bot_prefix) and not str(n).startswith("newsreel")]
+    # Add bot nodes connected to random human nodes
+    existing_nodes = [
+        n for n in G.nodes() 
+        if not str(n).startswith(bot_prefix) and not str(n).startswith("newsreel")
+    ]
     if len(existing_nodes) == 0:
-        raise ValueError("Graph has no existing nodes to attach bots to.")
+        raise ValueError("Graph has no valid nodes to attach bots to.")
+
     bot_ids = []
     for i in range(n_bots):
         bot_id = f"{bot_prefix}_{i}"
@@ -44,13 +48,18 @@ def add_random_bots(G, model, n_bots=10, edges_per_bot=3, bot_prefix="bot"):
         bot = BOT(model, id=bot_id)
         model.agents[bot_id] = bot
         bot_ids.append(bot_id)
+
     return bot_ids
 
 def add_random_newsreels(G, model, n_reels=10, edges_per_reel=3, reel_prefix="newsreel"):
-    # add n_reels new nodes connected randomly and register them as NewsReel agents
-    existing_nodes = [n for n in G.nodes() if not str(n).startswith("bot") and not str(n).startswith(reel_prefix)]
+    # Add newsreel nodes connected to random human nodes
+    existing_nodes = [
+        n for n in G.nodes() 
+        if not str(n).startswith("bot") and not str(n).startswith(reel_prefix)
+    ]
     if len(existing_nodes) == 0:
-        raise ValueError("Graph has no existing nodes to attach newsreels to.")
+        raise ValueError("Graph has no valid nodes to attach newsreels to.")
+
     reel_ids = []
     for i in range(n_reels):
         reel_id = f"{reel_prefix}_{i}"
@@ -62,26 +71,22 @@ def add_random_newsreels(G, model, n_reels=10, edges_per_reel=3, reel_prefix="ne
         reel = NewsReel(model, id=reel_id)
         model.agents[reel_id] = reel
         reel_ids.append(reel_id)
+
     return reel_ids
 
-
-# paste this into loadegonetwork.py (replace existing function)
-import matplotlib.pyplot as plt
-import networkx as nx
-
 def draw_agent_network(G, model, save_path=None, show=False):
-    # classify nodes by agent type
+    # Classify nodes by agent type
     bot_nodes = []
     reel_nodes = []
     susceptible_nodes = []
     skeptic_nodes = []
 
     for node in G.nodes():
-        agent = None
         try:
             agent = model.get_agent(str(node))
         except Exception:
             agent = None
+
         if agent is None:
             continue
 
@@ -99,10 +104,10 @@ def draw_agent_network(G, model, save_path=None, show=False):
 
     plt.figure(figsize=(12, 10))
     nx.draw_networkx_edges(G, pos, alpha=0.15)
-    nx.draw_networkx_nodes(G, pos, nodelist=susceptible_nodes, node_color="skyblue", label="Susceptible", node_size=80)
-    nx.draw_networkx_nodes(G, pos, nodelist=skeptic_nodes, node_color="orange", label="Skeptic", node_size=80)
-    nx.draw_networkx_nodes(G, pos, nodelist=bot_nodes, node_color="red", label="BOT", node_size=150)
-    nx.draw_networkx_nodes(G, pos, nodelist=reel_nodes, node_color="green", label="NewsReel", node_size=150)
+    nx.draw_networkx_nodes(G, pos, nodelist=susceptible_nodes, node_color="skyblue", node_size=80)
+    nx.draw_networkx_nodes(G, pos, nodelist=skeptic_nodes, node_color="orange", node_size=80)
+    nx.draw_networkx_nodes(G, pos, nodelist=bot_nodes, node_color="red", node_size=150)
+    nx.draw_networkx_nodes(G, pos, nodelist=reel_nodes, node_color="green", node_size=150)
 
     plt.legend(scatterpoints=1)
     plt.title("Agent Network Visualization")
@@ -119,15 +124,10 @@ def draw_agent_network(G, model, save_path=None, show=False):
         else:
             plt.close()
 
-
 def remove_small_components(G, min_size=10):
-    # get connected components
+    # Remove connected components smaller than min_size
     components = list(nx.connected_components(G))
-
-    # keep only components >= min_size
     big_components = [c for c in components if len(c) >= min_size]
-
-    # merge into a subgraph
     nodes_to_keep = set().union(*big_components)
     G_clean = G.subgraph(nodes_to_keep).copy()
 
@@ -137,10 +137,7 @@ def remove_small_components(G, min_size=10):
 
     return G_clean
 
-
+# Example usage
 G = load_ego_graph("facebook", 0)
-# remove ego
 G.remove_node("0")
-# remove all components smaller than 10 nodes
 G = remove_small_components(G, min_size=10)
-
