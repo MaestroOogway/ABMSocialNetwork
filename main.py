@@ -11,6 +11,7 @@ from loadegonetwork import (
     add_random_newsreels,
 )
 from simulation import simulate_multi_news
+from visualizer import SimulationVisualizer
 
 
 def pedir_porcentajes():
@@ -28,6 +29,37 @@ def pedir_porcentajes():
             print("❌ Entrada inválida. Intente nuevamente.\n")
 
 
+def pedir_visualizacion():
+    """Pregunta al usuario si desea visualización en tiempo real."""
+    print("\n=== CONFIGURACIÓN DE VISUALIZACIÓN ===")
+    while True:
+        respuesta = input("¿Desea visualización en tiempo real? (s/n): ").strip().lower()
+        if respuesta in ["s", "si", "sí", "yes", "y"]:
+            return True
+        elif respuesta in ["n", "no"]:
+            return False
+        else:
+            print("❌ Por favor ingrese 's' o 'n'")
+
+
+def pedir_numero_experimentos():
+    """Pregunta cuántos experimentos ejecutar."""
+    print("\n=== CONFIGURACIÓN DE EXPERIMENTOS ===")
+    print("Opciones recomendadas:")
+    print("  1 = Solo visualización (rápido, ~1 minuto)")
+    print("  10 = Estadísticas básicas (~5-10 minutos)")
+    print("  100 = Estadísticas completas (~30-60 minutos)")
+    while True:
+        try:
+            n = int(input("\n¿Cuántos experimentos desea ejecutar? (1-100): ").strip())
+            if 1 <= n <= 100:
+                return n
+            else:
+                print("❌ Por favor ingrese un número entre 1 y 100")
+        except:
+            print("❌ Entrada inválida. Ingrese un número.")
+
+
 def determinar_caso(frac_s, frac_k):
     if frac_s == frac_k:
         return "caso1"
@@ -37,7 +69,7 @@ def determinar_caso(frac_s, frac_k):
         return "caso3"
 
 
-def run_single_experiment(G, run_id, frac_s, frac_k):
+def run_single_experiment(G, run_id, frac_s, frac_k, enable_viz=False):
     """Ejecuta un experimento completo y devuelve las series agregadas."""
     model = build_model_from_graph(G, frac_susceptible=frac_s, frac_skeptic=frac_k)
 
@@ -58,9 +90,17 @@ def run_single_experiment(G, run_id, frac_s, frac_k):
         news_list.append(n)
         initial_seed_map[n.id] = [rid]
 
-    metrics, aggregated, actual_iters, detailed_logs = simulate_multi_news(
-        model, news_list, initial_seed_map, max_iters=30
-    )
+    # crear visualizador si está habilitado
+    visualizer = None
+    if enable_viz:
+        visualizer = SimulationVisualizer(G, model, news_list, max_iters=30)
+
+    metrics, aggregated, actual_iters, detailed_logs = simulate_multi_news(model, news_list, initial_seed_map, max_iters=30, visualizer=visualizer)
+
+    # cerrar visualizador si se usó
+    if visualizer is not None:
+        input("\n⏸️  Presione Enter para continuar al siguiente experimento...")
+        visualizer.close()
 
     return aggregated, actual_iters
 
@@ -73,6 +113,12 @@ if __name__ == "__main__":
     caso = determinar_caso(frac_s, frac_k)
 
     # =============================================================
+    #   1.5) PREGUNTAR POR VISUALIZACIÓN Y NÚMERO DE EXPERIMENTOS
+    # =============================================================
+    enable_visualization = pedir_visualizacion()
+    N_RUNS = pedir_numero_experimentos()
+
+    # =============================================================
     #   2) CREAR DIRECTORIOS AUTOMÁTICOS DEPENDIENDO DEL CASO
     # =============================================================
     log_dir = f"logs/{caso}"
@@ -82,7 +128,17 @@ if __name__ == "__main__":
     os.makedirs(fig_dir, exist_ok=True)
 
     print(f"\n➡ Configuración detectada: {frac_s*100:.0f}% susceptibles, {frac_k*100:.0f}% escépticos")
-    print(f"➡ Guardando resultados en: logs/{caso}/ y figures/{caso}/\n")
+    print(f"➡ Número de experimentos: {N_RUNS}")
+    print(f"➡ Visualización en tiempo real: {'ACTIVADA ✅' if enable_visualization else 'DESACTIVADA'}")
+    print(f"➡ Guardando resultados en: logs/{caso}/ y figures/{caso}/")
+
+    if enable_visualization and N_RUNS > 1:
+        print("\n💡 NOTA: Solo el primer experimento mostrará visualización.")
+        print("   Los otros correrán rápidamente sin visualización para estadísticas.\n")
+    elif enable_visualization and N_RUNS == 1:
+        print("\n✨ Modo visualización única - Perfecto para observar el comportamiento!\n")
+    else:
+        print()
 
     # =============================================================
     #   3) CARGAR O GENERAR RED
@@ -92,8 +148,6 @@ if __name__ == "__main__":
     except:
         G = nx.erdos_renyi_graph(300, 0.02)
         G = nx.relabel_nodes(G, lambda x: str(x))
-
-    N_RUNS = 100
 
     # almacenar series de cada corrida
     runs_true_exposed = []
@@ -106,7 +160,9 @@ if __name__ == "__main__":
     # =============================================================
     for run in range(N_RUNS):
         print(f"Running experiment {run+1}/{N_RUNS}")
-        aggregated, iters = run_single_experiment(G, run, frac_s, frac_k)
+        # solo visualizar el primer experimento si está habilitado
+        show_viz = enable_visualization and (run == 0)
+        aggregated, iters = run_single_experiment(G, run, frac_s, frac_k, enable_viz=show_viz)
 
         runs_true_exposed.append(aggregated[True]["exposed"])
         runs_false_exposed.append(aggregated[False]["exposed"])
@@ -154,8 +210,10 @@ if __name__ == "__main__":
     plt.plot(iters_range, mean_false_sh, marker="o", label="False Shared", color="red")
     plt.fill_between(iters_range, mean_false_sh - std_false_sh, mean_false_sh + std_false_sh, alpha=0.2, color="red")
     plt.title("Cantidad de noticias compartidas (media ± std) - 100 corridas")
-    plt.xlabel("Iteración"); plt.ylabel("Agentes que compartieron")
-    plt.legend(); plt.tight_layout()
+    plt.xlabel("Iteración")
+    plt.ylabel("Agentes que compartieron")
+    plt.legend()
+    plt.tight_layout()
     plt.savefig(f"{fig_dir}/line_shared.png")
     plt.close()
 
@@ -166,15 +224,16 @@ if __name__ == "__main__":
     plt.plot(iters_range, mean_false_exp, marker="o", label="False Exposed", color="red")
     plt.fill_between(iters_range, mean_false_exp - std_false_exp, mean_false_exp + std_false_exp, alpha=0.2, color="red")
     plt.title("Cantidad de noticias expuestas (media ± std) - 100 corridas")
-    plt.xlabel("Iteración"); plt.ylabel("Agentes expuestos")
-    plt.legend(); plt.tight_layout()
+    plt.xlabel("Iteración")
+    plt.ylabel("Agentes expuestos")
+    plt.legend()
+    plt.tight_layout()
     plt.savefig(f"{fig_dir}/line_exposed.png")
     plt.close()
 
     # --- GRAFICO 3: BOX SHARED ---
     plt.figure(figsize=(10, 5))
-    plt.boxplot([A_true_sh.flatten(), A_false_sh.flatten()],
-                labels=["True Shared", "False Shared"])
+    plt.boxplot([A_true_sh.flatten(), A_false_sh.flatten()], labels=["True Shared", "False Shared"])
     plt.title("Distribución de noticias compartidas (100 corridas)")
     plt.tight_layout()
     plt.savefig(f"{fig_dir}/box_shared.png")
@@ -182,8 +241,7 @@ if __name__ == "__main__":
 
     # --- GRAFICO 4: BOX EXPOSED ---
     plt.figure(figsize=(10, 5))
-    plt.boxplot([A_true_exp.flatten(), A_false_exp.flatten()],
-                labels=["True Exposed", "False Exposed"])
+    plt.boxplot([A_true_exp.flatten(), A_false_exp.flatten()], labels=["True Exposed", "False Exposed"])
     plt.title("Distribución de noticias expuestas (100 corridas)")
     plt.tight_layout()
     plt.savefig(f"{fig_dir}/box_exposed.png")

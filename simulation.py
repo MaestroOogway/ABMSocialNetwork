@@ -1,18 +1,13 @@
 # simulation.py
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Tuple, Any, Optional
 from agents import News
 import csv, os
 
-def simulate_multi_news(
-    model,
-    news_list: List[News],
-    initial_seed_map: Dict[int, List[str]],
-    max_iters: int = 20,
-    save_aggregated_csv: str = None,
-    save_detailed_log: str = None
-) -> Tuple[Dict[int, Dict[str, List[int]]], Dict[bool, Dict[str, List[int]]], int, List[Dict[str, Any]]]:
+
+def simulate_multi_news(model, news_list: List[News], initial_seed_map: Dict[int, List[str]], max_iters: int = 20, save_aggregated_csv: str = None, save_detailed_log: str = None, visualizer: Optional[Any] = None) -> Tuple[Dict[int, Dict[str, List[int]]], Dict[bool, Dict[str, List[int]]], int, List[Dict[str, Any]]]:
     # simulate multiple news items spreading in parallel
     # returns (metrics_per_news, aggregated_by_veracity, actual_iters, detailed_logs)
+    # visualizer: opcional, instancia de SimulationVisualizer para visualización en tiempo real
 
     G = model.G
 
@@ -26,7 +21,7 @@ def simulate_multi_news(
         nid = news.id
         seeds = [str(s) for s in initial_seed_map.get(nid, [])]
         frontiers[nid] = set(seeds)
-        metrics[nid] = {'new_shared': [], 'new_exposed': []}
+        metrics[nid] = {"new_shared": [], "new_exposed": []}
         for sid in seeds:
             agent = model.get_agent(sid)
             if nid not in agent.newsReceivedIds:
@@ -38,10 +33,7 @@ def simulate_multi_news(
                 agent.newsSharedIds.add(nid)
 
     # prepare aggregated time series (pre-allocate to max_iters)
-    aggregated: Dict[bool, Dict[str, List[int]]] = {
-        True: {'shared': [0] * max_iters, 'exposed': [0] * max_iters},   # true news
-        False: {'shared': [0] * max_iters, 'exposed': [0] * max_iters}   # false news
-    }
+    aggregated: Dict[bool, Dict[str, List[int]]] = {True: {"shared": [0] * max_iters, "exposed": [0] * max_iters}, False: {"shared": [0] * max_iters, "exposed": [0] * max_iters}}  # true news  # false news
 
     detailed_logs: List[Dict[str, Any]] = []  # detailed propagation log entries
 
@@ -85,43 +77,37 @@ def simulate_multi_news(
                     next_frontiers[nid].add(nb)
                     newly_shared_count += 1
                     for sender in sharer_set:
-                        detailed_logs.append({
-                            "iteration": it,
-                            "sender": sender,
-                            "receiver": nb,
-                            "news_id": nid,
-                            "news_party": news.party,
-                            "news_veracity": news.veracity
-                        })
+                        detailed_logs.append({"iteration": it, "sender": sender, "receiver": nb, "news_id": nid, "news_party": news.party, "news_veracity": news.veracity})
                     # coarse-grain propagation log kept in model for backward compatibility
-                    model.news_propagation.append({
-                        "sender_candidates": list(sharer_set),
-                        "receiver_id": nb,
-                        "news_id": nid,
-                        "news_party": news.party,
-                        "news_veracity": news.veracity,
-                        "iteration": it
-                    })
+                    model.news_propagation.append({"sender_candidates": list(sharer_set), "receiver_id": nb, "news_id": nid, "news_party": news.party, "news_veracity": news.veracity, "iteration": it})
 
             # update per-news metrics
-            metrics[nid]['new_exposed'].append(newly_exposed_count)
-            metrics[nid]['new_shared'].append(newly_shared_count)
+            metrics[nid]["new_exposed"].append(newly_exposed_count)
+            metrics[nid]["new_shared"].append(newly_shared_count)
 
             # update aggregated series at index it
             ver = news.veracity  # True/False
-            aggregated[ver]['exposed'][it] += newly_exposed_count
-            aggregated[ver]['shared'][it] += newly_shared_count
+            aggregated[ver]["exposed"][it] += newly_exposed_count
+            aggregated[ver]["shared"][it] += newly_shared_count
+
+        # actualizar visualización si está habilitada
+        if visualizer is not None:
+            visualizer.update(it, frontiers, aggregated, news_by_id)
 
         # move to next round
         frontiers = next_frontiers
         actual_iters = it + 1
         if not any_active:
+            # Actualizar visualización una última vez mostrando el estado final
+            if visualizer is not None:
+                visualizer.update(it, frontiers, aggregated, news_by_id)
+            print(f"\n✅ Propagación completada en iteración {it + 1} (sin más actividad)")
             break
 
     # trim aggregated series to actual_iters
     for ver in (True, False):
-        aggregated[ver]['exposed'] = aggregated[ver]['exposed'][:actual_iters]
-        aggregated[ver]['shared'] = aggregated[ver]['shared'][:actual_iters]
+        aggregated[ver]["exposed"] = aggregated[ver]["exposed"][:actual_iters]
+        aggregated[ver]["shared"] = aggregated[ver]["shared"][:actual_iters]
 
     # optionally save aggregated CSV
     if save_aggregated_csv:
@@ -130,13 +116,7 @@ def simulate_multi_news(
             writer = csv.writer(f)
             writer.writerow(["iteration", "true_shared", "false_shared", "true_exposed", "false_exposed"])
             for i in range(actual_iters):
-                writer.writerow([
-                    i,
-                    aggregated[True]['shared'][i],
-                    aggregated[False]['shared'][i],
-                    aggregated[True]['exposed'][i],
-                    aggregated[False]['exposed'][i]
-                ])
+                writer.writerow([i, aggregated[True]["shared"][i], aggregated[False]["shared"][i], aggregated[True]["exposed"][i], aggregated[False]["exposed"][i]])
 
     # optionally save detailed logs CSV
     if save_detailed_log:
