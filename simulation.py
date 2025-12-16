@@ -1,8 +1,8 @@
 # simulation.py
 from typing import List, Dict, Tuple, Any, Optional
-from agents import News
+from agents import News, Susceptible, Skeptic
 import csv, os
-
+import numpy as np  # <-- añadido
 
 def simulate_multi_news(
     model,
@@ -16,9 +16,9 @@ def simulate_multi_news(
     Dict[int, Dict[str, List[int]]],
     Dict[bool, Dict[str, List[int]]],
     int,
-    List[Dict[str, Any]]
+    List[Dict[str, Any]],
+    Dict[str, Dict[str, List[float]]]
 ]:
-    # Simulate multiple news items diffusing in parallel
     G = model.G
 
     # Map news_id -> News object
@@ -27,6 +27,12 @@ def simulate_multi_news(
     # Initialize frontiers and metrics
     frontiers: Dict[int, set] = {}
     metrics: Dict[int, Dict[str, List[int]]] = {}
+
+    # Perception logs (media y std por iteración)
+    perception_stats = {
+        "susceptible": {"mean": [], "std": []},
+        "skeptic": {"mean": [], "std": []}
+    }
 
     for news in news_list:
         nid = news.id
@@ -133,6 +139,31 @@ def simulate_multi_news(
             aggregated[ver]["exposed"][it] += newly_exposed_count
             aggregated[ver]["shared"][it] += newly_shared_count
 
+        # --- NEW: sample perceptions by agent class at this iteration ---
+        sus_percs = []
+        sk_percs = []
+        for agent in model.agents.values():
+            # saltar bots/newsreels si existen
+            if isinstance(agent, Susceptible):
+                sus_percs.append(agent.perception)
+            elif isinstance(agent, Skeptic):
+                sk_percs.append(agent.perception)
+
+        # media y std (usar np.nan si vacío)
+        if len(sus_percs) > 0:
+            perception_stats["susceptible"]["mean"].append(float(np.mean(sus_percs)))
+            perception_stats["susceptible"]["std"].append(float(np.std(sus_percs, ddof=0)))
+        else:
+            perception_stats["susceptible"]["mean"].append(float(np.nan))
+            perception_stats["susceptible"]["std"].append(float(np.nan))
+
+        if len(sk_percs) > 0:
+            perception_stats["skeptic"]["mean"].append(float(np.mean(sk_percs)))
+            perception_stats["skeptic"]["std"].append(float(np.std(sk_percs, ddof=0)))
+        else:
+            perception_stats["skeptic"]["mean"].append(float(np.nan))
+            perception_stats["skeptic"]["std"].append(float(np.nan))
+
         # Update visualizer
         if visualizer is not None:
             visualizer.update(it, frontiers, aggregated, news_by_id)
@@ -178,4 +209,4 @@ def simulate_multi_news(
             for row in detailed_logs:
                 writer.writerow(row)
 
-    return metrics, aggregated, actual_iters, detailed_logs
+    return metrics, aggregated, actual_iters, detailed_logs, perception_stats

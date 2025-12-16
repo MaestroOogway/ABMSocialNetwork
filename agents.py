@@ -282,14 +282,6 @@ class Skeptic(User):
         pc = self.computeShareProbability(news, w_P=w_P, w_f=w_f, w_c=w_c, exposure_count=exposure_count)
         return random.random() < pc
 
-    def updatePerception(self, news: News, exposure_count: int = 1):
-        if not news.veracity:
-            return
-        c_i = self.credibility
-        repeat_factor = 1 - (0.6 ** exposure_count)
-        delta = ALPHA * news.polarity * c_i * repeat_factor
-        self.perception = roundto(clamp(self.perception + delta, -1.0, 1.0))
-
 class BOT(User):
     def __init__(self, model: Model, id: str,
                  initialnews: Optional[List[News]] = None, **kwargs):
