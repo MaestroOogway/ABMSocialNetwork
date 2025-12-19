@@ -8,20 +8,19 @@ VERACITYNEWS = [False, True]
 PHI = 0.6
 ALPHA = 0.1
 
-THRESHOLD_TO_SKEPTIC = -0.3
-THRESHOLD_TO_SUSCEPTIBLE = 0.3
 
-def clamp(x, lo, hi): return max(lo, min(hi, x))
-def roundto(x, ndigits=3): return round(x, ndigits)
+def clamp(x, lo, hi):
+    return max(lo, min(hi, x))
+
+
+def roundto(x, ndigits=3):
+    return round(x, ndigits)
+
 
 class News:
     count = 0
 
-    def __init__(self, id=None, party=None, polarity=None, veracity=None,
-                 credibility=None, source: Optional[str] = None,
-                 topics: Optional[List[str]] = None,
-                 salience: Optional[float] = None,
-                 relevance: Optional[float] = None):
+    def __init__(self, id=None, party=None, polarity=None, veracity=None, credibility=None, source: Optional[str] = None, topics: Optional[List[str]] = None, salience: Optional[float] = None, relevance: Optional[float] = None):
 
         if id is None:
             id = News.count
@@ -43,9 +42,8 @@ class News:
         self.relevance = relevance
 
     def __repr__(self):
-        return (f"News(id={self.id}, party={self.party}, pol={self.polarity}, "
-                f"veracity={self.veracity}, cred={self.credibility:.2f}, "
-                f"src={self.source}, sal={self.salience:.2f})")
+        return f"News(id={self.id}, party={self.party}, pol={self.polarity}, " f"veracity={self.veracity}, cred={self.credibility:.2f}, " f"src={self.source}, sal={self.salience:.2f})"
+
 
 class Model:
     def __init__(self, G):
@@ -54,9 +52,6 @@ class Model:
         self.news_map = {}
         self.exposure_queue = {}
         self.news_propagation = []
-        self.converted_agents = []
-        self.conversions_to_skeptic = 0
-        self.conversions_to_susceptible = 0
 
     def register_agent(self, agent):
         self.agents[agent.id] = agent
@@ -119,12 +114,7 @@ class Model:
 
 
 class User:
-    def __init__(self, model: Model, id,
-                 party: Optional[str] = None,
-                 credibility: Optional[float] = None,
-                 perception: Optional[float] = None,
-                 interests: Optional[List[str]] = None,
-                 trust: Optional[dict] = None):
+    def __init__(self, model: Model, id, party: Optional[str] = None, credibility: Optional[float] = None, perception: Optional[float] = None, interests: Optional[List[str]] = None, trust: Optional[dict] = None):
 
         self.model = model
         self.id = id
@@ -178,13 +168,9 @@ class User:
         exposure_count = self.newsExposureCount[news.id]
         self.updatePerception(news, exposure_count)
 
-        new_type = self.checkConversion()
-        if new_type is not None:
-            self.convertTo(new_type)
-
         pc = 1.0 if self.shareDecision(news, exposure_count) else 0.0
         prev_shares = self.newsSharedCount.get(news.id, 0)
-        effective_pc = pc * (self.reshare_decay ** prev_shares)
+        effective_pc = pc * (self.reshare_decay**prev_shares)
 
         if random.random() < effective_pc and prev_shares < self.max_reshares:
             self.newsSharedCount[news.id] = prev_shares + 1
@@ -199,58 +185,13 @@ class User:
     def updatePerception(self, news: News, exposure_count: int = 1):
         """Updates perception using exposure-based reinforcement."""
         c_i = self.credibility
-        repeat_factor = 1 - (0.6 ** exposure_count)
+        repeat_factor = 1 - (0.6**exposure_count)
         delta = ALPHA * news.polarity * c_i * repeat_factor
         self.perception = roundto(clamp(self.perception + delta, -1.0, 1.0))
 
-    def checkConversion(self):
-        """Returns new class type if a conversion should happen."""
-        try:
-            if isinstance(self, (BOT, NewsReel)):
-                return None
-        except NameError:
-            pass
-
-        value = self.perception
-
-        if isinstance(self, Susceptible) and value <= THRESHOLD_TO_SKEPTIC:
-            return Skeptic
-        if isinstance(self, Skeptic) and value >= THRESHOLD_TO_SUSCEPTIBLE:
-            return Susceptible
-        return None
-
-    def convertTo(self, new_type):
-        try:
-            if isinstance(self, (BOT, NewsReel)):
-                print(f">> SKIP CONVERSION: {self.__class__.__name__} {self.id} cannot convert to {new_type.__name__}")
-                return
-        except NameError:
-            pass
-
-        old_type_name = self.__class__.__name__
-        new_type_name = new_type.__name__
-
-        if new_type == Skeptic:
-            self.credibility = clamp(self.credibility * 0.5, 0.1, 0.3)
-            self.model.conversions_to_skeptic += 1
-        elif new_type == Susceptible:
-            self.credibility = clamp(self.credibility * 2, 0.6, 0.9)
-            self.model.conversions_to_susceptible += 1
-
-        self.__class__ = new_type
-        self.model.converted_agents.append({
-            "id": self.id,
-            "old_type": old_type_name,
-            "new_type": new_type_name,
-            "party": self.party,
-            "perception": self.perception,
-            "new_credibility": self.credibility
-        })
-
-        print(f">> CONVERSION: {old_type_name} {self.id} -> {new_type_name} (cred={self.credibility:.3f})")
-
     def shareDecision(self, news: News, exposure_count: int = 1) -> bool:
         raise NotImplementedError
+
 
 class Susceptible(User):
     def __init__(self, model: Model, id: str, credibility: Optional[float] = None, **kwargs):
@@ -267,6 +208,7 @@ class Susceptible(User):
         pc = self.computeShareProbability(news, w_P=w_P, w_f=w_f, w_c=w_c, exposure_count=exposure_count)
         return random.random() < pc
 
+
 class Skeptic(User):
     def __init__(self, model: Model, id: str, credibility: Optional[float] = None, **kwargs):
         super().__init__(model, id, credibility=credibility, **kwargs)
@@ -282,9 +224,9 @@ class Skeptic(User):
         pc = self.computeShareProbability(news, w_P=w_P, w_f=w_f, w_c=w_c, exposure_count=exposure_count)
         return random.random() < pc
 
+
 class BOT(User):
-    def __init__(self, model: Model, id: str,
-                 initialnews: Optional[List[News]] = None, **kwargs):
+    def __init__(self, model: Model, id: str, initialnews: Optional[List[News]] = None, **kwargs):
         super().__init__(model, id, **kwargs)
         self.initialnews = initialnews if initialnews is not None else []
         self.max_reshares = 9999
@@ -300,9 +242,9 @@ class BOT(User):
     def shareDecision(self, news: News, exposure_count: int = 1) -> bool:
         return True
 
+
 class NewsReel(User):
-    def __init__(self, model: Model, id: str,
-                 initialnews: Optional[List[News]] = None, **kwargs):
+    def __init__(self, model: Model, id: str, initialnews: Optional[List[News]] = None, **kwargs):
         super().__init__(model, id, **kwargs)
         self.initialnews = initialnews if initialnews is not None else []
 
